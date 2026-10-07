@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b0f1a">
+<title>Game Booster</title>
+<style>
+:root{--bg:#0b0f1a;--card:#141a2b;--text:#e8ecf5;--muted:#8a94ad;--on:#22c55e;--accent:#38bdf8}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;justify-content:center;user-select:none}
+.app{width:100%;max-width:480px;padding:20px 16px 32px}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:12px}
+.power-wrap{display:flex;justify-content:center;margin:16px 0 8px}
+.power{width:180px;height:180px;border-radius:50%;border:none;background:#1b2338;color:var(--text);font-size:34px;font-weight:700;transition:.3s;box-shadow:0 0 0 6px #232c46 inset}
+.power.on{background:radial-gradient(circle at 50% 40%,#1f7a46,#0f3d25);box-shadow:0 0 40px rgba(34,197,94,.45),0 0 0 6px #22c55e inset}
+.power.busy{animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(.95)}}
+.status{text-align:center;color:var(--muted);font-size:14px;margin-bottom:18px;min-height:20px}
+.card{background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:6px 0}
+.bar{height:10px;border-radius:6px;background:#232c46;overflow:hidden;margin:10px 0 6px}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),#818cf8);transition:width .8s}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px}
+.stat{background:var(--card);border-radius:16px;padding:12px 14px}
+.stat b{display:block;font-size:22px;margin-top:2px}
+.stat span{color:var(--muted);font-size:12px}
+.sw{position:relative;width:46px;height:26px;flex:none}
+.sw input{opacity:0;width:0;height:0}
+.sw i{position:absolute;inset:0;background:#2b3552;border-radius:26px;transition:.2s}
+.sw i:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.sw input:checked+i{background:var(--on)}
+.sw input:checked+i:before{transform:translateX(20px)}
+#log{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted);min-height:70px}
+.note{color:var(--muted);font-size:11px;text-align:center;margin-top:16px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Game Booster</h1>
+  <div class="sub">Mode gaming sekali ketuk</div>
+
+  <div class="power-wrap"><button class="power" id="power">OFF</button></div>
+  <div class="status" id="status">Ketuk untuk mengaktifkan</div>
+
+  <div class="grid">
+    <div class="stat"><span>FPS layar</span><b id="fps">--</b></div>
+    <div class="stat"><span>Core CPU</span><b id="cpu">--</b></div>
+    <div class="stat"><span>Baterai</span><b id="bat">--</b></div>
+    <div class="stat"><span>Mode</span><b id="mode">Normal</b></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span>Penggunaan RAM</span><span id="ramPct"></span></div>
+    <div class="bar"><i id="ramBar"></i></div>
+    <div class="row" style="padding:0;color:var(--muted);font-size:12px" id="ramTxt"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span>Prioritas CPU</span><label class="sw"><input type="checkbox" id="opt-cpu" checked><i></i></label></div>
+    <div class="row"><span>Bersihkan RAM</span><label class="sw"><input type="checkbox" id="opt-ram" checked><i></i></label></div>
+    <div class="row"><span>Bungkam notifikasi</span><label class="sw"><input type="checkbox" id="opt-dnd" checked><i></i></label></div>
+    <div class="row"><span>Mode FPS tinggi</span><label class="sw"><input type="checkbox" id="opt-fps" checked><i></i></label></div>
+  </div>
+
+  <div class="card"><div id="log"></div></div>
+
+  <div class="note">Mode simulasi: aplikasi web tidak bisa mengubah pengaturan sistem HP.<br>Angka FPS, core CPU, dan baterai dibaca dari perangkat; RAM hanya ilustrasi.</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const power = $('#power'), statusEl = $('#status'), logEl = $('#log');
+const ramBar = $('#ramBar'), ramTxt = $('#ramTxt'), ramPct = $('#ramPct');
+const fpsEl = $('#fps'), cpuEl = $('#cpu'), batEl = $('#bat'), modeEl = $('#mode');
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const totalMb = (navigator.deviceMemory || 4) * 1024;
+
+let on = false, busy = false, used = rand(0.72, 0.86);
+
+function renderRam() {
+  ramBar.style.width = (used * 100).toFixed(0) + '%';
+  ramPct.textContent = (used * 100).toFixed(0) + '%';
+  ramTxt.textContent = Math.round(totalMb * (1 - used)) + ' MB bebas dari ±' + totalMb + ' MB';
+}
+renderRam();
+
+function addLog(t) {
+  const d = document.createElement('div');
+  d.textContent = '› ' + t;
+  logEl.prepend(d);
+  while (logEl.children.length > 6) logEl.lastChild.remove();
+}
+
+// FPS layar (nyata, dihitung dari rendering halaman)
+let frames = 0, last = performance.now();
+function loop(now) {
+  frames++;
+  if (now - last >= 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (now - last));
+    frames = 0; last = now;
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+cpuEl.textContent = navigator.hardwareConcurrency || '--';
+
+if (navigator.getBattery) {
+  navigator.getBattery().then(b => {
+    const u = () => batEl.textContent = Math.round(b.level * 100) + '%';
+    u();
+    b.addEventListener('levelchange', u);
+  });
+}
+
+const steps = [
+  ['cpu', 'Memprioritaskan CPU...'],
+  ['ram', 'Membersihkan RAM...'],
+  ['dnd', 'Membungkam notifikasi...'],
+  ['fps', 'Mengunci mode FPS tinggi...']
+];
+
+async function toggle() {
+  if (busy) return;
+  busy = true;
+  power.classList.add('busy');
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  if (!on) {
+    power.textContent = '...';
+    statusEl.textContent = 'Mengoptimalkan...';
+    for (const [key, text] of steps) {
+      if (!$('#opt-' + key).checked) continue;
+      addLog(text);
+      await sleep(750);
+      if (key === 'ram') { used = rand(0.42, 0.58); renderRam(); }
+    }
+    on = true;
+    power.classList.add('on');
+    power.textContent = 'ON';
+    modeEl.textContent = 'Gaming';
+    statusEl.textContent = 'Mode gaming aktif';
+    addLog('Selesai, siap bermain');
+  } else {
+    power.textContent = '...';
+    addLog('Mematikan booster...');
+    await sleep(500);
+    on = false;
+    power.classList.remove('on');
+    power.textContent = 'OFF';
+    modeEl.textContent = 'Normal';
+    used = rand(0.62, 0.76);
+    renderRam();
+    statusEl.textContent = 'Ketuk untuk mengaktifkan';
+  }
+  power.classList.remove('busy');
+  busy = false;
+}
+power.addEventListener('click', toggle);
+</script>
+</body>
+</html>
